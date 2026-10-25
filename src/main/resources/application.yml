@@ -1,0 +1,125 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/payment_db
+    username: postgres
+    password: loi114
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:4321/realms/ecommerce-realm # Đồng bộ với Keycloak realm
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 60000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: payment-service-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: java.util.*,com.tlcn.*
+    topics:
+      payment-success: payment-success
+      payment-failed: payment-failed
+      payment-refund-request: payment-refund-request
+      suborder-payout-requested: suborder-payout-requested
+      suborder-refund-requested: suborder-refund-requested
+      refund-completed: refund-completed
+      refund-request: refund-request
+      refund-success: refund-success
+      refund-failed: refund-failed
+
+cors:
+  # ecommerce-vendor :5174, ecommerce-customer :5175; giữ :5173/:3000 tương thích cũ
+  allowed-origins: http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000
+
+vnpay:
+  merchant-id: ${VNPAY_MERCHANT_ID:6RA281ND}
+  hash-secret: ${VNPAY_HASH_SECRET:OGBS0DCOEZ97BY9U16XLRA0WUWHGDH3Q}
+  api-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+  settlement-api-url: ${VNPAY_SETTLEMENT_API_URL:https://sandbox.vnpayment.vn/apis/settlement/settlementbank}
+  return-url: http://localhost:5175/payment/vnpay-return
+  vendor-return-url: http://localhost:5174/payment/vnpay-return
+  ipn-url: https://canister-garden-backwater.ngrok-free.dev/payments/vnpay-ipn
+  webhook-settlement-url: https://canister-garden-backwater.ngrok-free.dev/payments/webhook/settlement-confirmation
+  locale: vn
+
+# Vendor Service Configuration — host must be the Eureka service name
+# because VendorServiceClient uses the @LoadBalanced RestTemplate.
+vendor-service:
+  url: ${VENDOR_SERVICE_URL:http://vendor-service}
+
+payment:
+  intent:
+    ttl:
+      minutes: 15
+  settlement:
+    retry:
+      max-attempts: 3
+      # Exponential backoff delays (seconds)
+      delays:
+        - 60 # 1st retry: 1 minute
+        - 300 # 2nd retry: 5 minutes
+        - 900 # 3rd retry: 15 minutes
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    enabled: true
+  instance:
+    prefer-ip-address: true
+  instance-id: ${spring.application.name}:${spring.cloud.client.ip-address}:${server.port}
+  ip-address: ${spring.cloud.client.ip-address}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.cloud: DEBUG
+    com.netflix.discovery: DEBUG
+    com.tlcn: DEBUG
+    org.keycloak: DEBUG
